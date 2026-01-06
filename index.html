@@ -1,0 +1,524 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>모바일 포토존</title>
+    <!--
+    [사용법 및 배포방법]
+    1. 준비물: 
+       - characters.png: 배경이 투명한 캐릭터 이미지 (두 캐릭터가 함께 있는 이미지 권장)
+       - frame.png: (옵션) 카메라 전체에 씌울 프레임 이미지 (배경 투명 PNG)
+    2. 배포: 
+       - HTTPS 환경이 필수입니다. Vercel, Netlify, GitHub Pages 등을 추천합니다.
+    3. QR 생성: 
+       - 배포된 HTTPS URL을 QR코드로 제작하여 현장에 배치하세요.
+    4. iOS 참고: 
+       - iOS 사파리 환경에서 '저장하기'가 동작하지 않을 경우 결과 이미지를 길게 눌러 저장하도록 안내합니다.
+    -->
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #1d4ed8;
+            --bg-dark: #111827;
+            --text-light: #f9fafb;
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-dark);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-light);
+        }
+
+        /* 공통 레이아웃 */
+        .screen {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* 인트로 화면 */
+        #intro-screen {
+            background: linear-gradient(135deg, #1e3a8a 0%, #000 100%);
+            text-align: center;
+            padding: 20px;
+        }
+        .start-btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 18px 40px;
+            font-size: 1.25rem;
+            font-weight: bold;
+            border-radius: 50px;
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.5);
+            cursor: pointer;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* 카메라 화면 */
+        #camera-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* 오버레이 시스템 */
+        .overlay-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none; /* 오버레이 위에서도 터치가 video 아래로 전달되거나 버튼으로 가게 함 */
+        }
+
+        #frame-overlay {
+            z-index: 5;
+            object-fit: fill;
+        }
+
+        #character-overlay {
+            z-index: 6;
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            height: 40%; /* 기본값 */
+            transition: height 0.1s, left 0.1s;
+            display: block;
+        }
+
+        /* UI 컨트롤 영역 */
+        .top-bar {
+            position: absolute;
+            top: calc(10px + env(safe-area-inset-top));
+            left: 0; width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 100;
+        }
+        .help-btn {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold;
+        }
+
+        .side-controls {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 100;
+        }
+        .control-btn {
+            background: rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            width: 44px; height: 44px;
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .bottom-bar {
+            position: absolute;
+            bottom: calc(20px + var(--safe-bottom));
+            left: 0; width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            z-index: 100;
+        }
+        .capture-btn {
+            width: 80px; height: 80px;
+            background: white;
+            border: 6px solid rgba(0,0,0,0.1);
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+        .capture-btn::after {
+            content: '';
+            position: absolute;
+            top: 5px; left: 5px; right: 5px; bottom: 5px;
+            border: 2px solid #333;
+            border-radius: 50%;
+        }
+
+        .pos-controls {
+            display: flex;
+            gap: 20px;
+            background: rgba(0,0,0,0.4);
+            padding: 8px 15px;
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+        }
+        .pos-btn {
+            background: none; border: none; color: white;
+            font-size: 0.9rem; font-weight: bold;
+        }
+
+        /* 결과 화면 */
+        #result-screen {
+            background: #000;
+            padding-bottom: var(--safe-bottom);
+        }
+        #result-canvas-img {
+            max-width: 90%;
+            max-height: 70%;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            margin-bottom: 20px;
+        }
+        .result-actions {
+            display: flex;
+            gap: 15px;
+            width: 90%;
+        }
+        .action-btn {
+            flex: 1;
+            padding: 15px;
+            border-radius: 12px;
+            border: none;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .save-btn { background: var(--primary); color: white; }
+        .retake-btn { background: #4b5563; color: white; }
+
+        /* 도움말 & 토스트 */
+        #modal-help {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background: white; color: #333;
+            width: 85%; padding: 25px;
+            border-radius: 20px;
+            position: relative;
+        }
+        .modal-close {
+            position: absolute; top: 15px; right: 15px; font-size: 1.5rem;
+        }
+
+        .toast {
+            position: fixed;
+            top: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 0.9rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .ios-tip {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. 인트로 화면 -->
+    <div id="intro-screen" class="screen">
+        <h1 style="font-size: 2rem; margin-bottom: 10px;">캐릭터 포토존</h1>
+        <p style="opacity: 0.8; margin-bottom: 40px;">귀여운 캐릭터와 함께<br>멋진 추억을 남겨보세요!</p>
+        <button class="start-btn" onclick="initCamera()">카메라 시작하기</button>
+        <p style="margin-top: 20px; font-size: 0.8rem; opacity: 0.5;">* 본 앱은 HTTPS 보안 환경에서만 동작합니다.</p>
+    </div>
+
+    <!-- 2. 메인 카메라 화면 -->
+    <div id="main-screen" class="screen hidden">
+        <div id="camera-container">
+            <video id="video" autoplay playsinline muted></video>
+            
+            <!-- 오버레이 레이어 -->
+            <img id="frame-overlay" class="overlay-layer hidden" src="./frame.png" alt="frame">
+            <img id="character-overlay" src="./characters.png" alt="character">
+
+            <!-- 상단 바 -->
+            <div class="top-bar">
+                <div id="img-warning" style="color: #f87171; font-size: 0.8rem; display: none;">이미지 로드 실패</div>
+                <div style="flex-grow: 1;"></div>
+                <button class="help-btn" onclick="toggleHelp(true)">?</button>
+            </div>
+
+            <!-- 우측 조절 컨트롤 -->
+            <div class="side-controls">
+                <button class="control-btn" onclick="adjustSize(0.02)">+</button>
+                <button class="control-btn" onclick="adjustSize(-0.02)">-</button>
+                <button class="control-btn" style="font-size: 0.8rem;" onclick="resetAll()">리셋</button>
+            </div>
+
+            <!-- 하단 바 -->
+            <div class="bottom-bar">
+                <div class="pos-controls">
+                    <button class="pos-btn" onclick="adjustPos(-5)">◀ 왼쪽</button>
+                    <span style="color: rgba(255,255,255,0.3)">|</span>
+                    <button class="pos-btn" onclick="adjustPos(5)">오른쪽 ▶</button>
+                </div>
+                <button class="capture-btn" onclick="takePhoto()"></button>
+                <p style="font-size: 0.8rem; opacity: 0.7; margin: 0;">중앙 하단에 맞춰 촬영하세요</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 결과 화면 -->
+    <div id="result-screen" class="screen hidden">
+        <h2 style="margin: 20px 0 10px 0;">촬영 결과</h2>
+        <img id="result-canvas-img" src="" alt="result">
+        <div class="result-actions">
+            <button class="action-btn retake-btn" onclick="retake()">다시 찍기</button>
+            <button class="action-btn save-btn" onclick="savePhoto()">저장하기</button>
+        </div>
+        <p class="ios-tip" id="ios-save-tip">아이폰 사용자는 이미지를 꾹 눌러 '사진 앱에 저장'하세요.</p>
+    </div>
+
+    <!-- 4. 도움말 모달 -->
+    <div id="modal-help" class="hidden">
+        <div class="modal-content">
+            <span class="modal-close" onclick="toggleHelp(false)">&times;</span>
+            <h3 style="margin-top: 0;">포토존 이용 가이드</h3>
+            <ul style="padding-left: 20px; line-height: 1.6;">
+                <li><strong>크기 조절:</strong> 우측의 +, - 버튼으로 캐릭터 크기를 조정하세요.</li>
+                <li><strong>위치 이동:</strong> 하단 좌/우 버튼으로 캐릭터를 이동시킵니다.</li>
+                <li><strong>촬영:</strong> 하단 흰색 원 버튼을 누르면 캡처됩니다.</li>
+                <li><strong>저장:</strong> '저장하기' 버튼이 안 될 경우 이미지를 <strong>길게 눌러</strong> 직접 저장해주세요.</li>
+            </ul>
+            <button class="action-btn save-btn" style="width: 100%; margin-top: 15px;" onclick="toggleHelp(false)">확인</button>
+        </div>
+    </div>
+
+    <!-- 알림용 토스트 -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script>
+        // --- 상태 변수 ---
+        let stream = null;
+        let charHeightRatio = 0.40; // 화면 높이 대비 비율
+        let charXOffset = 0; // 중앙 기준 X 오프셋 (px)
+        const MIN_RATIO = 0.25;
+        const MAX_RATIO = 0.60;
+
+        const video = document.getElementById('video');
+        const charImg = document.getElementById('character-overlay');
+        const frameImg = document.getElementById('frame-overlay');
+        const warning = document.getElementById('img-warning');
+
+        // --- 이미지 로딩 체크 ---
+        function checkImage(imgEl) {
+            imgEl.onerror = () => {
+                imgEl.classList.add('hidden');
+                warning.style.display = 'block';
+                warning.textContent = `${imgEl.alt} 이미지 없음`;
+            };
+            imgEl.onload = () => {
+                if(imgEl.id === 'frame-overlay') imgEl.classList.remove('hidden');
+            };
+        }
+        checkImage(charImg);
+        checkImage(frameImg);
+
+        // --- 카메라 초기화 ---
+        async function initCamera() {
+            const constraints = {
+                video: {
+                    facingMode: 'environment', // 후면 카메라 우선
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                },
+                audio: false
+            };
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+                
+                // 화면 전환
+                document.getElementById('intro-screen').classList.add('hidden');
+                document.getElementById('main-screen').classList.remove('hidden');
+                
+                // iOS 대응: 유저 제스처 이후에만 소리 없는 비디오 재생 가능성이 높음
+                video.play();
+                updateUI();
+            } catch (err) {
+                console.error("Camera error:", err);
+                showToast("카메라 권한이 거부되었거나 지원하지 않는 기기입니다.");
+            }
+        }
+
+        // --- 캐릭터 조정 로직 ---
+        function adjustSize(delta) {
+            charHeightRatio = Math.max(MIN_RATIO, Math.min(MAX_RATIO, charHeightRatio + delta));
+            updateUI();
+        }
+
+        function adjustPos(delta) {
+            charXOffset += delta;
+            updateUI();
+        }
+
+        function resetAll() {
+            charHeightRatio = 0.40;
+            charXOffset = 0;
+            updateUI();
+        }
+
+        function updateUI() {
+            charImg.style.height = (charHeightRatio * 100) + '%';
+            charImg.style.left = `calc(50% + ${charXOffset}px)`;
+        }
+
+        // --- 촬영 및 캡처 (핵심) ---
+        async function takePhoto() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+
+            // 1. 캔버스 사이즈 결정 (화면 보이는 그대로 고해상도)
+            const viewWidth = video.clientWidth;
+            const viewHeight = video.clientHeight;
+            canvas.width = viewWidth * dpr;
+            canvas.height = viewHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            // 2. 비디오 그리기 (Object-fit: cover 대응 크롭 계산)
+            const vWidth = video.videoWidth;
+            const vHeight = video.videoHeight;
+            const vAspect = vWidth / vHeight;
+            const screenAspect = viewWidth / viewHeight;
+
+            let sx, sy, sWidth, sHeight;
+            if (vAspect > screenAspect) {
+                // 비디오가 가로로 더 김 -> 가로를 자름
+                sHeight = vHeight;
+                sWidth = vHeight * screenAspect;
+                sx = (vWidth - sWidth) / 2;
+                sy = 0;
+            } else {
+                // 비디오가 세로로 더 김 -> 세로를 자름
+                sWidth = vWidth;
+                sHeight = vWidth / screenAspect;
+                sx = 0;
+                sy = (vHeight - sHeight) / 2;
+            }
+            
+            ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, viewWidth, viewHeight);
+
+            // 3. 프레임 오버레이 그리기
+            if (!frameImg.classList.contains('hidden')) {
+                ctx.drawImage(frameImg, 0, 0, viewWidth, viewHeight);
+            }
+
+            // 4. 캐릭터 오버레이 그리기
+            const charDisplayHeight = viewHeight * charHeightRatio;
+            const charAspect = charImg.naturalWidth / charImg.naturalHeight;
+            const charDisplayWidth = charDisplayHeight * charAspect;
+            
+            // 중앙 하단 기준 좌표 계산
+            const charX = (viewWidth / 2) - (charDisplayWidth / 2) + charXOffset;
+            const charY = viewHeight - charDisplayHeight;
+
+            ctx.drawImage(charImg, charX, charY, charDisplayWidth, charDisplayHeight);
+
+            // 5. 결과 표시
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            document.getElementById('result-canvas-img').src = dataUrl;
+            
+            document.getElementById('main-screen').classList.add('hidden');
+            document.getElementById('result-screen').classList.remove('hidden');
+        }
+
+        function retake() {
+            document.getElementById('result-screen').classList.add('hidden');
+            document.getElementById('main-screen').classList.remove('hidden');
+        }
+
+        function savePhoto() {
+            const img = document.getElementById('result-canvas-img').src;
+            const link = document.createElement('a');
+            link.href = img;
+            link.download = `photozone_${Date.now()}.jpg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast("이미지 저장 시도 중... (아이폰은 길게 눌러 저장)");
+        }
+
+        // --- 유틸리티 ---
+        function toggleHelp(show) {
+            const modal = document.getElementById('modal-help');
+            if(show) modal.classList.remove('hidden');
+            else modal.classList.add('hidden');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        // iOS 인앱 브라우저 체크
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (!isIOS) {
+            document.getElementById('ios-save-tip').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "name": "모바일 카메라 포토존",
+  "description": "QR로 접속하여 캐릭터와 함께 사진을 찍을 수 있는 웹 기반 포토존 어플리케이션입니다.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
